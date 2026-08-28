@@ -45,3 +45,11 @@ test("image resize downscales and preserves aspect ratio", async () => {
   assert.equal(img.width, 50);
   assert.equal(img.height, 25);
 });
+
+test("image -> PDF (universal convert), starts with %PDF", async () => {
+  const src = await makePng();
+  const codb = new CODBDocs();
+  const out = (await codb.convert(src, { to: "pdf" })) as Uint8Array;
+  assert.ok(out.length > 4);
+  assert.equal(String.fromCharCode(out[0], out[1], out[2], out[3]), "%PDF");
+});

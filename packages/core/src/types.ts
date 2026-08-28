@@ -60,6 +60,8 @@ export interface CODBConvertOptions {
   height?: number;
   /** Render scale for PDF -> images. */
   scale?: number;
+  /** Output image format when rendering to an image (e.g. pdf.toImages). */
+  format?: string;
   /** Enable OCR / searchable output (requires ocr capability). */
   searchable?: boolean;
   /** Enable accessibility metadata. */

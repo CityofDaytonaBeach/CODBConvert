@@ -12,7 +12,7 @@
  */
 
 import { checkCapabilities, type CapabilityReport, type ExecutionBackend } from "./capabilities";
-import { sniffType, type NormalizedInput } from "./io";
+import { sniffType, sniffCategory, normalizeInput, type NormalizedInput, type CODBInputCategory } from "./io";
 import { registry, type ConversionContext, type ConverterKey } from "./registry";
 import type {
   CODBConvertOptions,
@@ -34,7 +34,13 @@ export {
   type ConversionContext,
   type ConverterKey,
 } from "./registry";
-export { normalizeInput, sniffType, type NormalizedInput } from "./io";
+export {
+  normalizeInput,
+  sniffType,
+  sniffCategory,
+  type NormalizedInput,
+  type CODBInputCategory,
+} from "./io";
 export {
   checkCapabilities,
   requestWebGpuAdapter,
@@ -104,14 +110,65 @@ export class CODBDocs {
   }
 
   /**
-   * Universal single-call converter:
+   * Universal single-call converter — anything → anything, entirely offline.
    *
-   * await codb.convert(file, { to: "pdf", searchable: true });
+   * const pdf = await codb.convert(file, { to: "pdf" });
+   * const img = await codb.convert(docx, { to: "png" });
+   * const txt = await codb.convert(pdf, { to: "txt" });
+   *
+   * Dispatches by BOTH input category (sniffed from bytes) and target format,
+   * so cross-domain conversions (office → pdf, text → image, etc.) resolve to
+   * the right registered converter.
    */
   async convert(input: CODBInput, options: CODBConvertOptions): Promise<CODBOutput> {
     const to = options.to;
-    const category = categoryForOutput(to);
-    return this.run({ category, op: "convert" }, input, options);
+    // PDF target: route by source category.
+    if (to === "pdf") {
+      const src = await this.sourceCategory(input);
+      if (src === "pdf") return this.run({ category: "pdf", op: "pdf" }, input, options);
+      if (src === "image" || src === "office" || src === "text") {
+        return this.run({ category: src, op: "pdf" }, input, options);
+      }
+      throw new Error(`Cannot convert unknown input to PDF. Hint: pass a supported input.`);
+    }
+
+    // Image target.
+    if (isImageOutput(to)) {
+      const src = await this.sourceCategory(input);
+      if (src === "image") return this.run({ category: "image", op: "convert" }, input, { ...options, to: to as CODBOutputFormat });
+      if (src === "pdf") {
+        return this.run({ category: "pdf", op: "toImages" }, input, { ...options, format: imageFormat(to), to: "pdf" });
+      }
+      if (src === "office" || src === "text") {
+        return this.run({ category: src, op: "toImage" }, input, { ...options, to });
+      }
+      throw new Error(`Cannot convert unknown input to image. Hint: pass a supported input.`);
+    }
+
+    // Text/structured targets (json/html/txt).
+    const src = await this.sourceCategory(input);
+    if (src === "pdf") {
+      if (to === "txt" || to === "html" || to === "json") {
+        return this.run({ category: "pdf", op: to }, input, options);
+      }
+      throw new Error(`PDF cannot convert to "${to}".`);
+    }
+    if (src === "office") {
+      return this.run({ category: "core", op: "convert" }, input, options);
+    }
+    if (src === "text") {
+      return this.run({ category: "text", op: "convert" }, input, options);
+    }
+    if (src === "image") {
+      throw new Error(`Image cannot convert to "${to}". Use to: png/jpeg/webp.`);
+    }
+    throw new Error(`Unsupported conversion to "${to}".`);
+  }
+
+  /** Resolve the coarse input category (pdf/image/office/text/unknown). */
+  private async sourceCategory(input: CODBInput): Promise<CODBInputCategory> {
+    const norm = await normalizeInput(input);
+    return sniffCategory(norm.bytes, norm.type, norm.name);
   }
 
   /** Parse any input into the CODB Document Model (as JSON bytes). */
@@ -161,28 +218,14 @@ export class CODBDocs {
   };
 }
 
-/** Map an output format to the converter category that owns it. */
-function categoryForOutput(to: CODBOutputFormat): string {
-  switch (to) {
-    case "pdf":
-      return "pdf";
-    case "jpg":
-    case "jpeg":
-    case "png":
-    case "webp":
-    case "avif":
-    case "gif":
-    case "bmp":
-    case "svg":
-      return "image";
-    case "html":
-      return "office";
-    case "txt":
-    case "json":
-      return "core";
-    default:
-      return "core";
-  }
+/** Is the target an image output format? */
+function isImageOutput(to: CODBOutputFormat): boolean {
+  return ["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "svg"].includes(to);
+}
+
+function imageFormat(to: CODBOutputFormat): string {
+  if (to === "jpeg") return "jpg";
+  return to;
 }
 
 /** Infer the source category from format hint, name, or magic bytes. */

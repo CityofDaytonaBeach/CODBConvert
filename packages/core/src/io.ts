@@ -97,6 +97,35 @@ function fromBase64(b64: string): Uint8Array {
   return bytes;
 }
 
+/** Coarse input category used for "anything → X" routing. */
+export type CODBInputCategory = "pdf" | "image" | "office" | "text" | "unknown";
+
+export function categoryFromType(type?: string): CODBInputCategory | undefined {
+  if (!type) return undefined;
+  const t = type.toLowerCase();
+  if (t === "application/pdf") return "pdf";
+  if (t === "text/plain" || t === "text/html") return "text";
+  if (t.startsWith("image/")) return "image";
+  const office = [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/zip",
+  ];
+  if (office.includes(t)) return "office";
+  return undefined;
+}
+
+export function categoryFromName(name?: string): CODBInputCategory | undefined {
+  if (!name) return undefined;
+  const ext = name.toLowerCase().split(".").pop() || "";
+  if (ext === "pdf") return "pdf";
+  if (["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp", "svg"].includes(ext)) return "image";
+  if (["docx", "xlsx", "pptx"].includes(ext)) return "office";
+  if (["txt", "md", "text", "html", "htm"].includes(ext)) return "text";
+  return undefined;
+}
+
 /** Sniff MIME type from leading magic bytes. */
 export function sniffType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)
@@ -109,4 +138,31 @@ export function sniffType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b)
     return "application/zip"; // zip-based office files
   return undefined;
+}
+
+/** Best-effort coarse category for "anything → X" routing. */
+export function sniffCategory(
+  bytes: Uint8Array,
+  type?: string,
+  name?: string,
+): CODBInputCategory {
+  const fromType = categoryFromType(type);
+  if (fromType) return fromType;
+  const fromName = categoryFromName(name);
+  if (name && fromName) return fromName;
+  const t = sniffType(bytes);
+  if (t === "application/pdf") return "pdf";
+  if (t === "application/zip") return "office";
+  if (t?.startsWith("image/")) return "image";
+  // No magic => heuristic: mostly-printable text.
+  const head = bytes.slice(0, Math.min(4096, bytes.byteLength));
+  if (head.byteLength > 0) {
+    let printable = 0;
+    for (let i = 0; i < head.byteLength; i++) {
+      const b = head[i];
+      if (b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127)) printable++;
+    }
+    if (printable / head.byteLength > 0.9) return "text";
+  }
+  return "unknown";
 }

@@ -2,6 +2,14 @@
   "name": "@codb/core",
   "version": "0.1.0",
   "description": "CODBConvert core: universal conversion API, CODB Document Model, and capability dispatcher.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CityofDaytonaBeach/CODBConvert.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

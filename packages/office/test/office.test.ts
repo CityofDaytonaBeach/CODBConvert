@@ -78,3 +78,29 @@ test("office renders model to HTML", async () => {
   assert.ok(html.includes("<!doctype html>"));
   assert.ok(html.includes("Hi"));
 });
+
+test("text -> PDF (universal convert), starts with %PDF", async () => {
+  const codb = new CODBDocs();
+  const out = (await codb.convert(new TextEncoder().encode("Hello PDF via CODBConvert"), { to: "pdf" })) as Uint8Array;
+  assert.ok(out.length > 4);
+  assert.equal(String.fromCharCode(out[0], out[1], out[2], out[3]), "%PDF");
+});
+
+test("text -> PNG (universal convert), byte magic is PNG", async () => {
+  const codb = new CODBDocs();
+  const out = (await codb.convert(new TextEncoder().encode("Render me to an image"), { to: "png" })) as Uint8Array;
+  assert.equal(out[0], 0x89);
+  assert.equal(out[1], 0x50);
+  assert.equal(out[2], 0x4e);
+  assert.equal(out[3], 0x47);
+});
+
+test("office (docx) -> PDF (universal convert), starts with %PDF", async () => {
+  const docx = buildZip([
+    { name: "word/document.xml", data: `<w:document><w:body><w:p><w:r><w:t>Office to PDF</w:t></w:r></w:p></w:body></w:document>` },
+  ]);
+  const codb = new CODBDocs();
+  const out = (await codb.convert(docx, { to: "pdf" })) as Uint8Array;
+  assert.ok(out.length > 4);
+  assert.equal(String.fromCharCode(out[0], out[1], out[2], out[3]), "%PDF");
+});

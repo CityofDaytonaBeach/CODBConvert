@@ -2,6 +2,14 @@
   "name": "@codb/office",
   "version": "0.1.0",
   "description": "CODBConvert office engine: parse DOCX/XLSX/PPTX into the CODB Document Model.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CityofDaytonaBeach/CODBConvert.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -21,7 +29,9 @@
     "test": "node --test \"test/*.test.ts\""
   },
   "dependencies": {
-    "@codb/core": "0.1.0"
+    "@codb/core": "0.1.0",
+    "@napi-rs/canvas": "^0.1.100",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

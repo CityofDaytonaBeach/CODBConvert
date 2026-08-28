@@ -18,6 +18,16 @@ backends automatically.
 
 ## Universal API
 
+Install only the engines you need:
+
+```bash
+npm install @codb/core @codb/pdf @codb/image @codb/office
+```
+
+Use the same SDK from React, Next.js, plain browser JavaScript, or Node/serverless
+functions. Registering a package makes its converters available to the universal
+dispatcher.
+
 ```ts
 import { CODBDocs, checkCapabilities } from "@codb/core";
 import { register as registerPdf } from "@codb/pdf";
@@ -34,6 +44,25 @@ const merged   = await codb.pdf.merge([f1, f2, f3]);
 const image    = await codb.image.convert(file, { format: "webp", quality: 0.85, width: 1920 });
 const docModel = await codb.convert(docx, { to: "json" });   // CODB Document Model
 ```
+
+Plain strings are treated as filesystem paths in Node. To convert raw text
+content, pass bytes or a `Blob` with `type: "text/plain"`:
+
+```ts
+const textBytes = new TextEncoder().encode("Hello CODBConvert");
+const pdfFromText = await codb.convert(textBytes, { to: "pdf" });
+```
+
+## React / Next.js
+
+Browser apps can use the same imports. Some heavy Node-only rendering paths use
+`@napi-rs/canvas` behind runtime guards, so app bundlers should not try to bundle
+native `.node` files into client code. The Vite demo externalizes
+`@napi-rs/canvas` in [`packages/react/vite.config.ts`](packages/react/vite.config.ts).
+
+For Next.js, import converters in client components only for browser-supported
+conversions, and run Node/serverless conversions from route handlers or server
+actions.
 
 The CODB Document Model is the intermediate representation start.md proposes:
 every input parses into `CODBDocument { pages, images, tables, links, headings, metadata }`
@@ -65,7 +94,13 @@ npm run dev          # start the Vite React demo
 ## Notes
 
 - stdin/base64 is only used at API boundaries; internal storage uses
-  `Blob` / `ArrayBuffer` / `Uint8Array` / `ReadableStream` per start.md.
-- `@codb/image` needs a browser canvas (or a canvas polyfill in Node); Node-only
-  callers should register a WASM/server image backend via the capability dispatch.
-- PDF.js worker is served as a static asset by Vite in the demo.
+   `Blob` / `ArrayBuffer` / `Uint8Array` / `ReadableStream` per start.md.
+- `@codb/image`, text-to-image, and PDF-to-image are local in Node via
+  `@napi-rs/canvas`, and local in browsers through canvas APIs where supported.
+- PDF.js worker/static handling is wired by the Vite demo.
+
+## Publishing
+
+Public packages publish to npmjs.com from GitHub Actions when a version tag is
+pushed, for example `v0.1.0`. The workflow expects an `NPM_TOKEN` repository
+secret with publish access.

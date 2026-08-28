@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import { CODBDocs } from "@codb/core";
-import { register as registerPdf } from "@codb/pdf";
+import { register as registerPdf, deframePages } from "@codb/pdf";
 
 async function makePdf(label: string): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -42,8 +42,7 @@ test("pdf split produces per-page envelopes", async () => {
   const codb = new CODBDocs();
   const out = (await codb.pdf.split(bytes)) as Uint8Array;
 
-  // Manual frames: each frame is a valid PDF, split on newline separators.
-  const frames = splitFrames(out);
+  const frames = deframePages(out);
   assert.equal(frames.length, 3);
   for (const frame of frames) {
     const parsed = await PDFDocument.load(frame as unknown as Uint8Array);
@@ -51,37 +50,31 @@ test("pdf split produces per-page envelopes", async () => {
   }
 });
 
-function splitFrames(bytes: Uint8Array): Uint8Array[] {
-  // %PDF magic embedded within envelope; newlines delimit frames.
-  const frames: Uint8Array[] = [];
-  let start = findSig(bytes, 0);
-  while (start !== -1) {
-    let next = findSig(bytes, start + 1);
-    let end = bytes.byteLength;
-    if (next !== -1) {
-      // Trim trailing newline before next %PDF.
-      let k = next - 1;
-      while (k > start && (bytes[k] === 10 || bytes[k] === 13)) k--;
-      end = k + 1;
-    }
-    frames.push(bytes.slice(start, end));
-    if (next === -1) break;
-    start = next;
-  }
-  return frames;
-}
+test("pdf.split frames round-trip through deframePages", async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([100, 100]);
+  doc.addPage([100, 100]);
+  const bytes = await doc.save();
+  const codb = new CODBDocs();
+  const out = (await codb.pdf.split(bytes)) as Uint8Array;
+  const frames = deframePages(out);
+  assert.equal(frames.length, 2);
+});
 
-function findSig(bytes: Uint8Array, from: number): number {
-  const sig = new TextEncoder().encode("%PDF-");
-  for (let i = from; i <= bytes.length - sig.length; i++) {
-    let ok = true;
-    for (let j = 0; j < sig.length; j++) {
-      if (bytes[i + j] !== sig[j]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return i;
-  }
-  return -1;
-}
+test("pdf.toImages renders pages offline (Node @napi-rs/canvas)", async () => {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([120, 120]);
+  page.drawText("CODB", { x: 20, y: 60, font, size: 14 });
+  const bytes = await doc.save();
+
+  const codb = new CODBDocs();
+  const out = (await codb.pdf.toImages(bytes, { format: "png", scale: 1 })) as Uint8Array;
+
+  const pages = deframePages(out);
+  assert.equal(pages.length, 1);
+  const png = pages[0];
+  // PNG magic: 89 50 4E 47 0D 0A 1A 0A
+  assert.deepEqual(Array.from(png.slice(0, 8)), [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.ok(png.byteLength > 100);
+});
