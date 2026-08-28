@@ -1,0 +1,34 @@
+{
+  "name": "codbconvert",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CODBConvert — a browser-first document conversion and understanding runtime.",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:core": "npm run build -w @codb/core",
+    "build:pdf": "npm run build -w @codb/pdf",
+    "build:image": "npm run build -w @codb/image",
+    "build:office": "npm run build -w @codb/office",
+    "build:react": "npm run build -w @codb/react",
+    "dev": "npm run dev -w @codb/react",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "esbuild@0.27.7": true,
+    "esbuild@0.25.12": true,
+    "vite@6.4.3": true
+  }
+}

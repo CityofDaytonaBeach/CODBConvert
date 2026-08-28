@@ -1,0 +1,85 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1e222b;
+  --text: #e7eaf0;
+  --muted: #9aa3b2;
+  --accent: #4f8cff;
+  --accent-2: #38d39f;
+  --danger: #ff5c5c;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 20% -10%, #1a2236 0%, var(--bg) 60%);
+  color: var(--text);
+}
+
+.shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+header h1 {
+  font-size: 34px;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.tagline { color: var(--muted); margin: 6px 0 4px; }
+.caps { color: var(--muted); font-size: 13px; margin: 4px 0 24px; }
+
+.drop {
+  border: 2px dashed #2c3240;
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop:hover { border-color: var(--accent); background: var(--panel-2); }
+
+.filelist { list-style: none; padding: 0; margin: 0; text-align: left; }
+.filelist li {
+  display: flex; justify-content: space-between;
+  background: var(--panel-2); border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 6px; font-size: 14px;
+}
+.filelist span { color: var(--muted); font-size: 12px; }
+
+.controls { margin-top: 22px; }
+.field { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
+.field select {
+  background: var(--panel-2); border: 1px solid #2c3240; color: var(--text);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px;
+}
+
+.buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.buttons button, .result button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid #2c3240; border-radius: 10px;
+  padding: 10px 16px; cursor: pointer; font-size: 14px;
+  transition: border-color 0.15s, transform 0.05s;
+}
+.buttons button:hover:not(:disabled) { border-color: var(--accent); }
+.buttons button:disabled { opacity: 0.4; cursor: default; }
+.buttons button:active:not(:disabled) { transform: translateY(1px); }
+
+.status { margin-top: 20px; color: var(--muted); font-size: 13px; }
+.status progress { width: 100%; height: 8px; accent-color: var(--accent-2); }
+.status span { display: inline-block; margin-top: 6px; }
+
+.error {
+  margin-top: 16px; color: var(--danger); background: rgba(255,92,92,0.08);
+  border: 1px solid rgba(255,92,92,0.3); border-radius: 10px; padding: 12px 14px;
+}
+
+.result { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+.result a { color: var(--accent-2); font-weight: 600; }

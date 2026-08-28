@@ -1,0 +1,31 @@
+{
+  "name": "@codb/image",
+  "version": "0.1.0",
+  "description": "CODBConvert image engine: format conversion, resize, compression via Canvas/WebCodecs.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "@codb/core": "0.1.0",
+    "@napi-rs/canvas": "^0.1.100"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}
