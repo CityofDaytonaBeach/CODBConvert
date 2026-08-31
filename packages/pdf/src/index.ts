@@ -12,6 +12,7 @@ import { registry, type ConversionContext } from "@codb/core";
 import type { CODBInput, CODBOutput } from "@codb/core";
 import { normalizeInput } from "@codb/core";
 import { PDFDocument } from "pdf-lib";
+import { encodeBmp, encodeGif, encodeTiff, encodeSvg, type PixelSource } from "@codb/image";
 
 function isNode(): boolean {
   return typeof process !== "undefined" && !!process.versions?.node;
@@ -157,14 +158,13 @@ async function renderPageToImage(
   const w = Math.floor(viewport.width);
   const h = Math.floor(viewport.height);
   const format = opts.format ?? "webp";
-  const mime = `image/${format === "jpg" ? "jpeg" : format}`;
 
   if (isNode()) {
     const nc = await import("@napi-rs/canvas");
     const canvas = nc.createCanvas(w, h);
     const g = canvas.getContext("2d");
     await page.render({ canvasContext: g, viewport } as never).promise;
-    return encodeNodeCanvas(canvas, format, opts.quality);
+    return encodeNodeCanvas(canvas, g as unknown as PixelSource, format, opts.quality);
   }
 
   const doc = (globalThis as { document?: Document }).document;
@@ -174,17 +174,79 @@ async function renderPageToImage(
   canvas.height = h;
   const g = canvas.getContext("2d")!;
   await page.render({ canvasContext: g, viewport }).promise;
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), mime, opts.quality);
-  });
-  return new Uint8Array(await blob.arrayBuffer());
+  return encodeBrowserCanvas({ getImageData: g.getImageData.bind(g), width: w, height: h } as never, canvas as unknown as { toBlob(fn: (b: Blob | null) => void, mime: string, q?: number): void }, w, h, format, opts.quality);
 }
 
-function encodeNodeCanvas(canvas: { toBuffer(mime: string, q?: number): Uint8Array }, format: string, quality: number): Uint8Array {
-  if (format === "png") return new Uint8Array(canvas.toBuffer("image/png"));
-  if (format === "jpeg" || format === "jpg") return new Uint8Array(canvas.toBuffer("image/jpeg", quality));
-  if (format === "webp") return new Uint8Array(canvas.toBuffer("image/webp", quality));
-  throw new Error(`Cannot encode PDF page as "${format}" in Node; supported: png, jpeg, webp.`);
+function encodeNodeCanvas(
+  canvas: { toBuffer(mime: string, q?: number): Uint8Array } & { width: number; height: number },
+  g: PixelSource,
+  format: string,
+  quality: number,
+): Uint8Array {
+  const f = normFmt(format);
+  if (f === "png") return new Uint8Array(canvas.toBuffer("image/png"));
+  if (f === "jpeg") return new Uint8Array(canvas.toBuffer("image/jpeg", quality));
+  if (f === "webp") return new Uint8Array(canvas.toBuffer("image/webp", quality));
+  if (f === "bmp") return encodeBmp(g, canvas.width, canvas.height);
+  if (f === "gif") return encodeGif(g, canvas.width, canvas.height);
+  if (f === "tiff") return encodeTiff(g, canvas.width, canvas.height);
+  if (f === "svg") {
+    const png = new Uint8Array(canvas.toBuffer("image/png"));
+    return encodeSvg(canvas.width, canvas.height, btoaSafe(png));
+  }
+  throw new Error(`Cannot encode PDF page as "${format}" in Node; supported: png, jpeg, webp, bmp, gif, tiff, svg.`);
+}
+
+async function encodeBrowserCanvas(
+  source: PixelSource,
+  canvas: { toBlob(fn: (b: Blob | null) => void, mime: string, q?: number): void },
+  w: number,
+  h: number,
+  format: string,
+  quality: number,
+): Promise<Uint8Array> {
+  const f = normFmt(format);
+  if (f === "bmp") return encodeBmp(source, w, h);
+  if (f === "gif") return encodeGif(source, w, h);
+  if (f === "tiff") return encodeTiff(source, w, h);
+  if (f === "svg") {
+    const png = await new Promise<Uint8Array>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? b.arrayBuffer().then((a) => resolve(new Uint8Array(a))) : reject(new Error("toBlob failed for png"))), "image/png", quality),
+    );
+    return encodeSvg(w, h, bytesToBase64(png));
+  }
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), `image/${f}`, quality);
+  });
+  return blobToBytes(blob);
+}
+
+function normFmt(format: string): string {
+  if (format === "jpg") return "jpeg";
+  if (format === "tif") return "tiff";
+  return format;
+}
+
+function blobToBytes(blob: Blob): Promise<Uint8Array> {
+  return blob.arrayBuffer().then((b) => new Uint8Array(b));
+}
+
+function btoaSafe(bytes: Uint8Array): string {
+  if (typeof btoa === "function") {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  return Buffer.from(bytes).toString("base64");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof btoa === "function") {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  return Buffer.from(bytes).toString("base64");
 }
 
 /** Render every page to images. Returns one encoded image per page. */

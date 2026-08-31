@@ -120,7 +120,7 @@ export function categoryFromName(name?: string): CODBInputCategory | undefined {
   if (!name) return undefined;
   const ext = name.toLowerCase().split(".").pop() || "";
   if (ext === "pdf") return "pdf";
-  if (["png", "jpg", "jpeg", "webp", "gif", "avif", "bmp", "svg"].includes(ext)) return "image";
+  if (["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif", "bmp", "svg", "tif", "tiff"].includes(ext)) return "image";
   if (["docx", "xlsx", "pptx"].includes(ext)) return "office";
   if (["txt", "md", "text", "html", "htm"].includes(ext)) return "text";
   return undefined;
@@ -135,8 +135,19 @@ export function sniffType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
   if (bytes.length >= 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46)
     return "image/webp";
+  if (bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp") {
+    const brand = String.fromCharCode(...bytes.slice(8, 12));
+    if (["heic", "heix", "hevc", "hevx"].includes(brand)) return "image/heic";
+    if (["mif1", "msf1"].includes(brand)) return "image/heif";
+    if (brand === "avif" || brand === "avis") return "image/avif";
+  }
   if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b)
     return "application/zip"; // zip-based office files
+  // TIFF: little-endian "II*\0" or big-endian "MM\0*"
+  if (bytes.length >= 4 && bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0x00)
+    return "image/tiff";
+  if (bytes.length >= 4 && bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2a)
+    return "image/tiff";
   return undefined;
 }
 

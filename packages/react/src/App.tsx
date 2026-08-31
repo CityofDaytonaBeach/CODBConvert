@@ -50,7 +50,7 @@ export function App() {
           filename = "extracted.txt";
         } else if (op === "toImages") {
           const blob = (await codb.pdf.toImages(files[0], {
-            format: format as "png" | "webp",
+            format: format as "png" | "webp" | "jpeg" | "bmp" | "gif" | "svg" | "tiff",
             scale: 1,
             ...cfg,
           })) as Uint8Array;
@@ -58,7 +58,7 @@ export function App() {
           output = blob;
         } else if (op === "imageConvert") {
           const blob = (await codb.image.convert(files[0], {
-            format: format as "png" | "webp" | "jpeg",
+            format: format as "png" | "webp" | "jpeg" | "avif" | "bmp" | "gif" | "svg" | "tiff",
             quality: 0.9,
             ...cfg,
           })) as Uint8Array;
@@ -134,6 +134,11 @@ export function App() {
             <option value="webp">webp</option>
             <option value="png">png</option>
             <option value="jpeg">jpeg</option>
+            <option value="avif">avif</option>
+            <option value="bmp">bmp</option>
+            <option value="gif">gif</option>
+            <option value="svg">svg</option>
+            <option value="tiff">tiff</option>
           </select>
         </label>
 

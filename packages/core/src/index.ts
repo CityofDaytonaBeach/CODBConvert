@@ -197,7 +197,7 @@ export class CODBDocs {
       this.run({ category: "pdf", op: "split" }, input, { to: "pdf", ...options }),
     toImages: (
       input: CODBInput,
-      options: { format?: "png" | "webp" | "jpeg"; scale?: number } & Partial<CODBConvertOptions> = {},
+      options: { format?: "png" | "webp" | "jpeg" | "bmp" | "gif" | "svg" | "tiff"; scale?: number } & Partial<CODBConvertOptions> = {},
     ): Promise<CODBOutput> =>
       this.run({ category: "pdf", op: "toImages" }, input, {
         to: (options.format ?? "webp") as CODBOutputFormat,
@@ -209,18 +209,62 @@ export class CODBDocs {
   readonly image = {
     convert: (
       input: CODBInput,
-      options: { format: "png" | "webp" | "jpeg" | "avif" | "bmp" } & Partial<CODBConvertOptions>,
+      options: { format: "png" | "webp" | "jpeg" | "avif" | "bmp" | "gif" | "svg" | "tiff" } & Partial<CODBConvertOptions>,
     ): Promise<CODBOutput> =>
       this.run({ category: "image", op: "convert" }, input, {
         to: options.format,
         ...options,
       }),
   };
+
+  /**
+   * Convert anything and return the result as a base64 string.
+   * Pass the inner target format via {@link options.to} (e.g. { to: "png" }).
+   */
+  async toBase64(input: CODBInput, options: Omit<CODBConvertOptions, "to"> & { to: Exclude<CODBOutputFormat, "base64"> }): Promise<string> {
+    const inner = { ...options, to: options.to };
+    const raw = await this.convert(input, inner);
+    return bytesToBase64(await toBytes(raw));
+  }
+}
+
+/** Convert any CODBOutput to a Uint8Array. */
+export async function toBytes(output: CODBOutput): Promise<Uint8Array> {
+  if (output instanceof Uint8Array) return output;
+  if (output instanceof ArrayBuffer) return new Uint8Array(output);
+  if (output instanceof Blob) return new Uint8Array(await output.arrayBuffer());
+  throw new Error("Unsupported output type.");
+}
+
+/** Encode raw bytes to a base64 string (no data: prefix). */
+export function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof btoa === "function") {
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+    }
+    return btoa(bin);
+  }
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return buf.toString("base64");
+}
+
+/** Decode a base64 string (with or without data: URL prefix) to raw bytes. */
+export function base64ToBytes(b64: string): Uint8Array {
+  const clean = b64.replace(/^data:[^;]*;base64,/, "").replace(/\s+/g, "");
+  if (typeof atob === "function") {
+    const bin = atob(clean);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  return Uint8Array.from(Buffer.from(clean, "base64"));
 }
 
 /** Is the target an image output format? */
 function isImageOutput(to: CODBOutputFormat): boolean {
-  return ["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "svg"].includes(to);
+  return ["jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "svg", "tiff"].includes(to);
 }
 
 function imageFormat(to: CODBOutputFormat): string {
@@ -232,7 +276,7 @@ function imageFormat(to: CODBOutputFormat): string {
 export async function inferCategory(input: CODBInput, hint?: CODBInputFormat): Promise<string> {
   if (hint) {
     if (hint === "pdf" || hint === "html") return "pdf";
-    if (["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "svg"].includes(hint)) return "image";
+    if (["jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif", "bmp", "svg", "tiff", "tif"].includes(hint)) return "image";
     if (["docx", "xlsx", "pptx"].includes(hint)) return "office";
     return "core";
   }

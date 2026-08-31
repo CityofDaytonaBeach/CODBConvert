@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@codb/core": "0.1.0",
+    "@codb/image": "0.1.0",
     "@napi-rs/canvas": "^0.1.100",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38"
