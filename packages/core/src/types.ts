@@ -75,6 +75,8 @@ export interface CODBConvertOptions {
   optimize?: boolean;
   /** Force a specific execution backend. */
   backend?: ExecutionBackend;
+  /** Cancel conversion work without terminating the page or worker. */
+  signal?: AbortSignal;
   /** Call converter callbacks with progress. */
   onProgress?: (p: ConversionProgress) => void;
 }

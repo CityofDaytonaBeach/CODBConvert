@@ -7,13 +7,14 @@
  * const merged = await codb.pdf.merge([f1, f2, f3]);
  * const img = await codb.image.convert(file, { format: "webp", quality: 0.85, width: 1920 });
  *
- * Backends (LOCAL / WORKER / WEBGPU / WASM / SERVER) are chosen automatically
+ * Backends (LOCAL / WORKER / WEBGPU / WASM) are chosen automatically
  * unless overridden via `options.backend`.
  */
 
 import { checkCapabilities, type CapabilityReport, type ExecutionBackend } from "./capabilities";
 import { sniffType, sniffCategory, normalizeInput, type NormalizedInput, type CODBInputCategory } from "./io";
 import { registry, type ConversionContext, type ConverterKey } from "./registry";
+import { BinaryFlowRuntime, type BinaryFlowOptions, type BinaryFlowJob } from "./binary-flow";
 import type {
   CODBConvertOptions,
   CODBInput,
@@ -25,6 +26,20 @@ import type {
 } from "./types";
 
 export type { CODBConvertOptions, CODBOutput, CODBOutputFormat, CODBInput, CODBInputFormat };
+
+export {
+  BinaryFlowJob,
+  BinaryFlowQueue,
+  BinaryFlowRuntime,
+  type BinaryFlowEvent,
+  type BinaryFlowJobState,
+  type BinaryFlowOptions,
+  type BinaryFlowQueueOptions,
+  type BinaryFlowStorage,
+  type BinaryFlowTask,
+  type BinaryFlowTaskContext,
+  type ConversionVerification,
+} from "./binary-flow";
 
 export {
   registry,
@@ -67,6 +82,7 @@ export {
 export class CODBDocs {
   readonly report: CapabilityReport;
   private usedBackend: ExecutionBackend = "local";
+  private readonly binaryFlow = new BinaryFlowRuntime();
 
   constructor(report: CapabilityReport = checkCapabilities()) {
     this.report = report;
@@ -78,19 +94,30 @@ export class CODBDocs {
   }
 
   private context(options: CODBConvertOptions, backend: ExecutionBackend): ConversionContext {
+    const signal = options.signal ?? new AbortController().signal;
+    const throwIfAborted = () => {
+      if (!signal.aborted) return;
+      if (signal.reason instanceof Error) throw signal.reason;
+      throw new DOMException("Conversion was aborted.", "AbortError");
+    };
     return {
       report: this.report,
       backend,
       options,
-      progress: (message, percent) => options.onProgress?.({
-        phase: message,
-        percent,
-        message,
-      } as ConversionProgress),
+      signal,
+      throwIfAborted,
+      progress: (message, percent) => {
+        throwIfAborted();
+        options.onProgress?.({ phase: message, percent, message } as ConversionProgress);
+      },
     };
   }
 
   private async run(key: ConverterKey, input: CODBInput | CODBInput[], options: CODBConvertOptions): Promise<CODBOutput> {
+    if (options.signal?.aborted) {
+      if (options.signal.reason instanceof Error) throw options.signal.reason;
+      throw new DOMException("Conversion was aborted.", "AbortError");
+    }
     const impls = registry.get(key);
     if (impls.length === 0) {
       throw new Error(`No converter registered for ${key.category}.${key.op}. Did you import the matching @codb package?`);
@@ -101,7 +128,10 @@ export class CODBDocs {
       impls.find((i) => i.backends.includes(backend)) ??
       impls.find((i) => i.backends.includes("local")) ??
       impls[0];
-    return impl.run(input, options, this.context(options, backend));
+    const context = this.context(options, backend);
+    const output = await impl.run(input, options, context);
+    context.throwIfAborted();
+    return output;
   }
 
   /** The backend actually used by the most recent call. */
@@ -163,6 +193,15 @@ export class CODBDocs {
       throw new Error(`Image cannot convert to "${to}". Use to: png/jpeg/webp.`);
     }
     throw new Error(`Unsupported conversion to "${to}".`);
+  }
+
+  /**
+   * Stage and convert a document through BinaryFlow's cancellable local queue.
+   * Reuse a checkpointed job's `id` in `options.jobId` to resume its staging.
+   */
+  convertJob(input: CODBInput, options: BinaryFlowOptions): BinaryFlowJob {
+    return this.binaryFlow.createJob(input, options, (staged, convertOptions) =>
+      this.convert(staged, convertOptions));
   }
 
   /** Resolve the coarse input category (pdf/image/office/text/unknown). */

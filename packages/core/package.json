@@ -22,6 +22,10 @@
     "./model": {
       "types": "./dist/model.d.ts",
       "import": "./dist/model.js"
+    },
+    "./binary-flow": {
+      "types": "./dist/binary-flow.d.ts",
+      "import": "./dist/binary-flow.js"
     }
   },
   "files": [

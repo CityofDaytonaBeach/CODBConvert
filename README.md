@@ -3,14 +3,14 @@
 A browser-first document & media conversion runtime, built as a monorepo of
 TypeScript packages. Everything follows the architecture in [`start.md`](./start.md):
 a single universal [CODB Document Model](packages/core/src/model.ts) plus a
-capability dispatcher that chooses **LOCAL / WORKER / WEBGPU / WASM / SERVER**
-backends automatically.
+capability dispatcher that chooses **LOCAL / WORKER / WEBGPU / WASM** backends.
+Conversion never falls back to an upload or remote processing server.
 
 ## Packages
 
 | Package | Purpose |
 | --- | --- |
-| [`@codb/core`](packages/core) | Universal conversion API (`CODBDocs`), CODB Document Model, capability detection, converter registry, input normalization (Blob/ArrayBuffer/Uint8Array/stream/path). |
+| [`@codb/core`](packages/core) | Universal conversion API (`CODBDocs`), BinaryFlow queue, CODB Document Model, capability detection, converter registry, and binary input handling. |
 | [`@codb/pdf`](packages/pdf) | PDF engine: merge, split, page selection (pdf-lib); render-to-images & text extraction (pdfjs-dist). |
 | [`@codb/image`](packages/image) | Image format conversion + resize via Canvas. |
 | [`@codb/office`](packages/office) | Custom ZIP reader + DOCX/XLSX/PPTX → CODB Document Model; JSON/HTML renderers. |
@@ -44,6 +44,35 @@ const merged   = await codb.pdf.merge([f1, f2, f3]);
 const image    = await codb.image.convert(file, { format: "webp", quality: 0.85, width: 1920 });
 const docModel = await codb.convert(docx, { to: "json" });   // CODB Document Model
 ```
+
+## BinaryFlow large-file jobs
+
+`convertJob()` stages files as binary chunks, preferably in the browser's
+Origin Private File System. Jobs expose an async progress stream, cancellation,
+lightweight output verification, and resumable staging after interruption.
+Base64 is never used internally.
+
+```ts
+const job = codb.convertJob(file, {
+  to: "pdf",
+  storage: "auto",
+  checkpoint: true,
+  chunkSize: 4 * 1024 * 1024,
+  memoryBudgetMB: 256,
+});
+
+for await (const event of job.events) {
+  console.log(event.phase, event.percent, event.processedBytes);
+}
+
+const output = await job.result();
+console.log(job.verification);
+```
+
+If a job is interrupted, pass its `job.id` back as `jobId` with the same input
+and options to reuse completed chunks. Current PDF and Office engines still
+materialize their final parser input; BinaryFlow establishes the streaming and
+checkpointing runtime that format-specific incremental parsers can adopt next.
 
 Plain strings are treated as filesystem paths in Node. To convert raw text
 content, pass bytes or a `Blob` with `type: "text/plain"`:

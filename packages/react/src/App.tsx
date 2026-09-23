@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { codb, report } from "./codb";
-import type { CODBInput, CODBOutput } from "@codb/core";
+import type { BinaryFlowJob, CODBInput, CODBOutput, CODBOutputFormat } from "@codb/core";
 
 type OpId = "merge" | "toImages" | "imageConvert" | "office" | "extractText";
 
@@ -19,6 +19,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const jobRef = useRef<BinaryFlowJob | null>(null);
 
   const onFiles = useCallback((list: FileList | null) => {
     if (!list) return;
@@ -38,6 +39,27 @@ export function App() {
       setStatus({ phase: "preparing", percent: 0 });
       try {
         const cfg = { onProgress: (p: Status) => setStatus(p) };
+        const convertWithBinaryFlow = async (to: CODBOutputFormat, extra: Record<string, unknown> = {}) => {
+          const job = codb.convertJob(files[0], {
+            to,
+            checkpoint: true,
+            storage: "auto",
+            ...extra,
+          });
+          jobRef.current = job;
+          const collectEvents = (async () => {
+            for await (const event of job.events) {
+              setStatus({
+                phase: event.phase,
+                percent: Math.round(event.percent),
+                message: event.message,
+              });
+            }
+          })();
+          const converted = await job.result();
+          await collectEvents;
+          return converted;
+        };
         let output: CODBOutput | null = null;
         let filename = `codb-${op}.bin`;
 
@@ -45,27 +67,20 @@ export function App() {
           output = await codb.pdf.merge(files as CODBInput[], cfg);
           filename = "merged.pdf";
         } else if (op === "extractText") {
-          const text = await codb.extractText(files[0], { ...cfg, to: "txt" });
-          output = new TextEncoder().encode(text);
+          output = await convertWithBinaryFlow("txt");
           filename = "extracted.txt";
         } else if (op === "toImages") {
-          const blob = (await codb.pdf.toImages(files[0], {
-            format: format as "png" | "webp" | "jpeg" | "bmp" | "gif" | "svg" | "tiff",
+          output = await convertWithBinaryFlow(format as CODBOutputFormat, {
             scale: 1,
-            ...cfg,
-          })) as Uint8Array;
+          });
           filename = `pdf-pages.${format}`;
-          output = blob;
         } else if (op === "imageConvert") {
-          const blob = (await codb.image.convert(files[0], {
-            format: format as "png" | "webp" | "jpeg" | "avif" | "bmp" | "gif" | "svg" | "tiff",
+          output = await convertWithBinaryFlow(format as CODBOutputFormat, {
             quality: 0.9,
-            ...cfg,
-          })) as Uint8Array;
+          });
           filename = `image-${Date.now()}.${format}`;
-          output = blob;
         } else if (op === "office") {
-          output = await codb.convert(files[0], { to: "json", ...cfg });
+          output = await convertWithBinaryFlow("json");
           filename = `${files[0].name.replace(/\.[^.]+$/, "")}.json`;
         }
 
@@ -82,6 +97,7 @@ export function App() {
         setError(e instanceof Error ? e.message : String(e));
         setStatus(null);
       } finally {
+        jobRef.current = null;
         setBusy(false);
       }
     },
@@ -158,6 +174,11 @@ export function App() {
           <button onClick={() => run("extractText")} disabled={busy || files.length === 0}>
             Extract text
           </button>
+          {busy && jobRef.current && (
+            <button onClick={() => jobRef.current?.cancel()}>
+              Cancel
+            </button>
+          )}
         </div>
       </section>
 

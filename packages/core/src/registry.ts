@@ -11,6 +11,8 @@ export interface ConversionContext {
   report: CapabilityReport;
   backend: ExecutionBackend;
   options: CODBConvertOptions;
+  signal: AbortSignal;
+  throwIfAborted(): void;
   progress(message: string, percent: number): void;
 }
 

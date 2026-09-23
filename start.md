@@ -23,7 +23,7 @@ PPTX → PDF	⚠️ Hard	custom OOXML renderer
 HTML → PDF	✅	browser rendering + PDF engine
 Video/audio conversion	✅/⚠️	WebCodecs + WASM
 FFmpeg-like filters	✅	WebCodecs/WebGPU
-Arbitrary legacy Office files	❌/⚠️	server fallback
+Arbitrary legacy Office files	❌/⚠️	local recovery when possible
 
 So I would not try to literally port LibreOffice and FFmpeg into the browser.
 
@@ -399,19 +399,18 @@ This would allow you to process much larger files without loading everything int
 
 The hybrid approach would be strongest
 
-I'd make the engine automatically choose:
+I'd make the engine automatically choose a local execution path:
 
                  File
                    │
              Capability Check
               /           \
              /             \
-     Browser supported     Unsupported
+      Native browser      Capsule needed
            │                   │
-       Local engine        VPS endpoint
+       Local engine       Lazy WASM module
            │                   │
-       WASM/WebGPU       LibreOffice/
-       WebCodecs          FFmpeg/etc.
+       WebGPU/WebCodecs    Local recovery
              \              /
               \            /
                Same Result API
@@ -428,11 +427,11 @@ LOCAL
 WORKER
 WEBGPU
 WASM
-SERVER
 
 automatically.
 
-That gives you something more practical than declaring war on LibreOffice on day one.
+Unsupported features produce an explicit local limitation or recovery result;
+documents are never uploaded for remote conversion.
 
 The bigger opportunity
 

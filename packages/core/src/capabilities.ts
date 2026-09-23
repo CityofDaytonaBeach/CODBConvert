@@ -1,7 +1,7 @@
 /**
  * Capability model. CODBDocs decides at runtime which backend to use:
  *
- * LOCAL / WORKER / WEBGPU / WASM / SERVER
+ * LOCAL / WORKER / WEBGPU / WASM
  *
  * Detection is coarse and defensive: everything is gated so a missing
  * capability degrades gracefully to a fallback backend.
@@ -25,8 +25,7 @@ export type ExecutionBackend =
   | "local"
   | "worker"
   | "webgpu"
-  | "wasm"
-  | "server";
+  | "wasm";
 
 export interface CapabilityReport {
   available: Record<Capability, boolean>;
