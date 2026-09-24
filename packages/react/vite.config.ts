@@ -4,10 +4,20 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: "127.0.0.1",
     port: 5173,
+    hmr: {
+      host: "127.0.0.1",
+    },
   },
   optimizeDeps: {
-    exclude: ["@codb/core", "@codb/pdf", "@codb/image", "@codb/office"],
+    exclude: [
+      "@codb/core",
+      "@codb/pdf",
+      "@codb/image",
+      "@codb/office",
+      "@napi-rs/canvas",
+    ],
   },
   build: {
     rollupOptions: {

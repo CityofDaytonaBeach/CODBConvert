@@ -74,6 +74,52 @@ and options to reuse completed chunks. Current PDF and Office engines still
 materialize their final parser input; BinaryFlow establishes the streaming and
 checkpointing runtime that format-specific incremental parsers can adopt next.
 
+## Fetch-compatible API
+
+`@codb/core/api` exposes a standard `Request`/`Response` handler. Calling it
+directly is fully serverless; mounting the same handler in a Service Worker,
+edge function, Node server, or framework route exposes an HTTP API without
+changing the contract.
+
+```ts
+import { CODBDocs, createCODBApi } from "@codb/core";
+
+const api = createCODBApi(new CODBDocs(), { basePath: "/__codb" });
+const response = await api.fetch(new Request(
+  "https://local.invalid/__codb/v1/convert?to=pdf&storage=auto",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type,
+      "X-CODB-Filename": file.name,
+      "X-CODB-Size": String(file.size),
+    },
+    body: file,
+  },
+));
+const converted = await response.blob();
+```
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/health` | Runtime health and serverless mode |
+| `GET` | `/v1/capabilities` | Browser/runtime capability report |
+| `POST` | `/v1/convert?to=pdf` | Convert and return the result |
+| `POST` | `/v1/jobs?to=pdf` | Start a queued conversion |
+| `GET` | `/v1/jobs/:id` | Read job status and verification |
+| `GET` | `/v1/jobs/:id/result` | Retrieve a completed result |
+| `DELETE` | `/v1/jobs/:id` | Cancel a running conversion |
+
+Add `?wait=true` to the result route for long polling. Inputs are raw binary
+request bodies rather than Base64. `X-CODB-Filename` preserves the original
+name, and `Content-Type` supplies the input MIME type. See
+[`docs/api.md`](docs/api.md) for worker and hosted mounting examples.
+
+API request bodies stream into BinaryFlow storage. A queued job returns `202`
+after its upload has been safely staged. Because an HTTP body is a one-use
+stream, resuming that upload requires sending the request again; checkpoint
+reuse remains available to direct SDK jobs backed by reusable files or buffers.
+
 Plain strings are treated as filesystem paths in Node. To convert raw text
 content, pass bytes or a `Blob` with `type: "text/plain"`:
 

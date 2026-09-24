@@ -367,10 +367,23 @@ export class BinaryFlowRuntime {
     const jobId = validateJobId(options.jobId ?? createJobId());
     return new BinaryFlowJob(jobId, options.signal, async (job, signal) => {
       const store = await this.pickStore(options.storage ?? "auto", job);
+      const liveStream = isStreamInput(input);
+      const checkpointEnabled = options.checkpoint === true && !liveStream;
+      const runtimeOptions = checkpointEnabled === options.checkpoint
+        ? options
+        : { ...options, checkpoint: checkpointEnabled };
       let succeeded = false;
       try {
+        if (liveStream && options.checkpoint) {
+          job.emit({
+            type: "warning",
+            phase: "staging",
+            percent: 0,
+            message: "Checkpoint resume is unavailable for a one-use request stream.",
+          });
+        }
         job.setState("staging", "staging", 0, `Staging binary chunks in ${store.kind}.`);
-        const staged = await this.stageInput(input, options, store, job, signal);
+        const staged = await this.stageInput(input, runtimeOptions, store, job, signal);
         throwIfAborted(signal);
 
         job.setState("converting", "converting", 35, "Running local converter.");
@@ -407,7 +420,7 @@ export class BinaryFlowRuntime {
         succeeded = true;
         return output;
       } finally {
-        if (succeeded || !options.checkpoint) {
+        if (succeeded || !checkpointEnabled) {
           await store.deleteJob(jobId);
         }
       }
@@ -435,6 +448,9 @@ export class BinaryFlowRuntime {
     signal: AbortSignal,
   ): Promise<CODBInput> {
     const chunkSize = positiveInteger(options.chunkSize ?? 4 * 1024 * 1024, "chunkSize");
+    if (isStreamInput(input)) {
+      return this.stageStreamInput(input, options, store, job, signal, chunkSize);
+    }
     const source = await toRandomAccessSource(input);
     source.descriptor.fingerprint = await fingerprintSource(source, signal);
     const chunkCount = Math.max(1, Math.ceil(source.descriptor.size / chunkSize));
@@ -492,11 +508,104 @@ export class BinaryFlowRuntime {
     for (let index = 0; index < chunkCount; index++) parts.push(await store.get(job.id, index));
     return replayableInput(parts, source.descriptor);
   }
+
+  private async stageStreamInput(
+    input: { stream: ReadableStream<Uint8Array>; type?: string; name?: string; size?: number },
+    options: BinaryFlowOptions,
+    store: BinaryChunkStore,
+    job: BinaryFlowJob,
+    signal: AbortSignal,
+    chunkSize: number,
+  ): Promise<CODBInput> {
+    await store.deleteJob(job.id);
+
+    const reader = input.stream.getReader();
+    let buffer = new Uint8Array(chunkSize);
+    let buffered = 0;
+    let chunkIndex = 0;
+    let totalBytes = 0;
+
+    const flush = async () => {
+      const bytes = buffer.slice(0, buffered);
+      await store.put(job.id, chunkIndex, bytes);
+      const knownPercent = input.size && input.size > 0
+        ? (totalBytes / input.size) * 35
+        : (chunkIndex / (chunkIndex + 8)) * 35;
+      job.emit({
+        type: "chunk",
+        phase: "streaming",
+        percent: Math.min(34, knownPercent),
+        message: `Streamed chunk ${chunkIndex + 1}.`,
+        processedBytes: totalBytes,
+        totalBytes: input.size,
+        chunkIndex,
+      });
+      chunkIndex++;
+      buffer = new Uint8Array(chunkSize);
+      buffered = 0;
+    };
+
+    try {
+      for (;;) {
+        throwIfAborted(signal);
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        totalBytes += value.byteLength;
+        let offset = 0;
+        while (offset < value.byteLength) {
+          const length = Math.min(chunkSize - buffered, value.byteLength - offset);
+          buffer.set(value.subarray(offset, offset + length), buffered);
+          buffered += length;
+          offset += length;
+          if (buffered === chunkSize) await flush();
+        }
+      }
+      if (buffered > 0 || chunkIndex === 0) await flush();
+    } catch (error) {
+      await reader.cancel(error).catch(() => {});
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+
+    const descriptor: SourceDescriptor = {
+      name: input.name,
+      type: input.type,
+      size: totalBytes,
+      fingerprint: `stream-${totalBytes}`,
+    };
+    await store.writeManifest(job.id, {
+      version: 1,
+      source: descriptor,
+      chunkSize,
+      chunkCount: chunkIndex,
+      target: options.to,
+    });
+    job.emit({
+      type: "progress",
+      phase: "staging",
+      percent: 35,
+      message: `Staged ${totalBytes} streamed bytes.`,
+      processedBytes: totalBytes,
+      totalBytes,
+    });
+
+    const parts: BlobPart[] = [];
+    for (let index = 0; index < chunkIndex; index++) parts.push(await store.get(job.id, index));
+    return replayableInput(parts, descriptor);
+  }
 }
 
 interface RandomAccessSource {
   descriptor: SourceDescriptor;
   read(start: number, end: number): Promise<Uint8Array>;
+}
+
+function isStreamInput(
+  input: CODBInput,
+): input is { stream: ReadableStream<Uint8Array>; type?: string; name?: string; size?: number } {
+  return typeof input !== "string" && "stream" in input && input.stream instanceof ReadableStream;
 }
 
 async function toRandomAccessSource(input: CODBInput): Promise<RandomAccessSource> {

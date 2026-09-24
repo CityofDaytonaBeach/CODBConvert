@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     model: "src/model.ts",
     "binary-flow": "src/binary-flow.ts",
+    api: "src/api.ts",
   },
   format: ["esm"],
   dts: true,

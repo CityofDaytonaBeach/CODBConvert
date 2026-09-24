@@ -26,6 +26,10 @@
     "./binary-flow": {
       "types": "./dist/binary-flow.d.ts",
       "import": "./dist/binary-flow.js"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "import": "./dist/api.js"
     }
   },
   "files": [

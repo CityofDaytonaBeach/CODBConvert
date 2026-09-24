@@ -40,6 +40,13 @@ export {
   type BinaryFlowTaskContext,
   type ConversionVerification,
 } from "./binary-flow";
+export {
+  CODBFetchApi,
+  createCODBApi,
+  type CODBApiEngine,
+  type CODBApiJobStatus,
+  type CODBApiOptions,
+} from "./api";
 
 export {
   registry,

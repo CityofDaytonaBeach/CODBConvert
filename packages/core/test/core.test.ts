@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BinaryFlowQueue, BinaryFlowRuntime, CODBDocs, checkCapabilities, registry } from "@codb/core";
+import { BinaryFlowQueue, BinaryFlowRuntime, CODBDocs, checkCapabilities, createCODBApi, registry } from "@codb/core";
 import { normalizeInput, sniffType, toBytes } from "@codb/core";
 import { createDocument, documentToText } from "@codb/core";
 
@@ -140,4 +140,60 @@ test("checkpoint fingerprints reject different same-size input", async () => {
 
   assert.equal(new TextDecoder().decode(await toBytes(output)), "other");
   assert.equal(phases.includes("resuming"), false);
+});
+
+test("fetch API converts binary request bodies locally", async () => {
+  const api = createCODBApi(new CODBDocs());
+  const response = await api.fetch(new Request("https://codb.local/v1/convert?to=txt&storage=memory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain",
+      "X-CODB-Filename": "note.txt",
+    },
+    body: "api conversion",
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
+  assert.equal(response.headers.get("x-codb-backend"), "local");
+  assert.equal(await response.text(), "api conversion");
+  api.dispose();
+});
+
+test("fetch API exposes queued job status and result endpoints", async () => {
+  const api = createCODBApi(new CODBDocs());
+  const created = await api.fetch(new Request("https://codb.local/v1/jobs?to=txt&storage=memory", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", "X-CODB-Filename": "queued.txt" },
+    body: "queued conversion",
+  }));
+  assert.equal(created.status, 202);
+  const status = await created.json() as { id: string; links: { result: string } };
+
+  const result = await api.fetch(new Request(`https://codb.local${status.links.result}?wait=true`));
+  assert.equal(result.status, 200);
+  assert.equal(result.headers.get("x-codb-job-id"), status.id);
+  assert.equal(await result.text(), "queued conversion");
+
+  const finalStatus = await api.fetch(new Request(`https://codb.local/v1/jobs/${status.id}`));
+  const finalBody = await finalStatus.json() as { state: string; resultReady: boolean };
+  assert.equal(finalBody.state, "completed");
+  assert.equal(finalBody.resultReady, true);
+  api.dispose();
+});
+
+test("fetch API validates formats and input limits", async () => {
+  const api = createCODBApi(new CODBDocs(), { maxInputBytes: 3 });
+  const invalid = await api.fetch(new Request("https://codb.local/v1/convert?to=exe", {
+    method: "POST",
+    body: "abc",
+  }));
+  assert.equal(invalid.status, 400);
+
+  const tooLarge = await api.fetch(new Request("https://codb.local/v1/convert?to=txt", {
+    method: "POST",
+    body: "four",
+  }));
+  assert.equal(tooLarge.status, 413);
+  api.dispose();
 });

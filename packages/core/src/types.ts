@@ -13,7 +13,7 @@ export type CODBInput =
   | ArrayBufferView
   | string /** URL | path | data URL */
   | { buffer: ArrayBuffer; type?: string; name?: string }
-  | { stream: ReadableStream<Uint8Array>; type?: string; name?: string };
+  | { stream: ReadableStream<Uint8Array>; type?: string; name?: string; size?: number };
 
 export type CODBOutput = Blob | Uint8Array | ArrayBuffer;
 
